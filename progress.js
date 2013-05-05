@@ -38,7 +38,7 @@ var makeCheckMarkClickHandler = function(lessonId) {
 
 var makeLessonClickHandler = function(lessonId) {
   return function(e) {
-    // coursera has a "memory" where they prepend 2 icon-ok's on each video link click
+    // coursera has a "memory" leak where they prepend 2 icon-ok's on each video link click
     // grab the last one in the list, which should be ours
     var icons = this.parentNode.getElementsByClassName("icon-ok");
     var icon = icons[icons.length-1];
