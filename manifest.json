@@ -1,0 +1,21 @@
+{
+  "manifest_version": 2,
+
+  "name": "Coursera Progress",
+  "description": "Control Coursera progress.",
+  "version": "1.0",
+
+  "permissions": [
+    "storage",
+    "*://class.coursera.org/"
+  ],
+
+  "background": { "scripts": ["bg.js"] },
+  "content_scripts": [
+    {
+      "matches": ["*://class.coursera.org/*"],
+      "js": ["progress.js"]
+    }
+  ]
+
+}
