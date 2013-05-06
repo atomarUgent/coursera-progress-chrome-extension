@@ -1,4 +1,6 @@
-var className = document.location.pathname.split("/")[1];
+var url = document.location.pathname.split("/");
+var className = url[1];
+var sectionName = url.slice(2, url.length).join("/") + document.location.search;
 
 var port = chrome.runtime.connect({name: "coursera_progress"});
 port.onMessage.addListener(function(msg) {
@@ -8,7 +10,7 @@ port.onMessage.addListener(function(msg) {
 });
 
 // request initial data from background page
-port.postMessage({"type": "data", "className": className});
+port.postMessage({"type": "data", "className": className, "sectionName": sectionName});
 
 
 var lessons = document.querySelectorAll(".viewed, .unviewed");
@@ -23,6 +25,7 @@ var updateLesson = function(elem, lessonId, watched) {
   port.postMessage({
       "type": "update",
       "className": className,
+      "sectionName": sectionName,
       "lessonId": lessonId,
       "watchedStatus": watched ? 1 : 0});
 }
