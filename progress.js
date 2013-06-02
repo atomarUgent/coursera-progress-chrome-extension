@@ -2,54 +2,70 @@ var url = document.location.pathname.split("/");
 var className = url[1];
 var sectionName = url.slice(2, url.length).join("/") + document.location.search;
 
-var port = chrome.runtime.connect({name: "coursera_progress"});
-port.onMessage.addListener(function(msg) {
-  if (msg["data"]) {
-    updatePage(msg["data"]);
-  }
-});
-
-// request initial data from background page
-port.postMessage({"type": "data", "className": className, "sectionName": sectionName});
-
 
 var lessons = document.querySelectorAll(".viewed, .unviewed");
+
+
+// Watch document.location changes to update watched status when moving
+// between videos inside the player
+setInterval(function() {
+  var path = document.location.pathname.split("/");
+  if (path.length == 4) {
+    var lessonId = path[3];
+    if (path[2] == "lecture" && lessonId != "index") {
+      // we're in the player
+      var elem = document.querySelector("[data-lecture-id='" + lessonId + "']");
+      if (elem) {
+        updateCheckmarkFromLesson(elem, true);
+        updateLesson(lessonId, true);
+      }
+    }
+  }
+}, 5000);
 
 
 var gray = "color:rgb(221,221,221)";
 var green = "color:rgb(0,128,0)";
 
 
-var updateLesson = function(elem, lessonId, watched) {
+var updateCheckmark = function(elem, watched) {
   elem.setAttribute("style", watched ? green : gray);
-  port.postMessage({
-      "type": "update",
-      "className": className,
-      "sectionName": sectionName,
-      "lessonId": lessonId,
-      "watchedStatus": watched ? 1 : 0});
+};
+
+
+var updateLesson = function(lessonId, watched) {
+  chrome.storage.sync.get(className, function(store) {
+    var progress = {};
+    if (store[className]) {
+      progress = store[className];
+    } else {
+      store[className] = progress;
+    }
+    if (!progress[sectionName]) {
+      progress[sectionName] = [];
+    }
+    progress[sectionName][lessonId] = watched;
+    chrome.storage.sync.set(store);
+  });
 }
 
 
 var makeCheckMarkClickHandler = function(lessonId) {
   return function(e) {
-    updateLesson(this, lessonId, this.getAttribute("style") == gray);
+    var watched = this.getAttribute("style") == gray;
+    updateCheckmark(this, watched);
+    updateLesson(lessonId, watched);
     return false;
   };
 }
 
 
-var makeLessonClickHandler = function(lessonId) {
-  return function(e) {
-    // coursera has a "memory" leak where they prepend 2 icon-ok's on each video link click
-    // grab the last one in the list, which should be ours
-    var icons = this.parentNode.getElementsByClassName("icon-ok");
-    var icon = icons[icons.length-1];
-    if (icon.getAttribute("style") == gray) {
-      updateLesson(icon, lessonId, /*watched*/ true);
-    }
-    return false;
-  };
+var updateCheckmarkFromLesson = function(elem, lessonId) {
+  var icon = elem.parentNode.querySelector(".icon-ok[style]");
+  if (icon.getAttribute("style") == gray) {
+    updateCheckmark(icon, /*watched*/ true)
+    updateLesson(lessonId, /*watched*/ true);
+  }
 }
 
 
@@ -91,23 +107,45 @@ var updateFolds = function(data) {
 }
 
 
+// Update the page based on stored data and return that data combined
+// with any additional watched status information gathered from the DOM
 var updatePage = function(data) {
+  if (!data[className]) {
+    data[className] = {};
+    data[className][sectionName] = {};
+  } else if (!data[className][sectionName]) {
+    data[className][sectionName] = {};
+  }
   for (var i = 0; i < lessons.length; i++) {
     var lesson = lessons[i];
+    var lessonId = "" + i;
+    var idElem = lessons[i].querySelector("[data-lecture-id]");
+    if (idElem) {
+      lessonId = idElem.getAttribute("data-lecture-id");
+    }
     var watched = true;
+    var storedValue = data[className][sectionName][lessonId];
     if (lesson.className.match("unviewed")) {
       var span = document.createElement("span");
       span.className = "icon-ok";
       span.setAttribute("style", gray);
       lesson.insertBefore(span, lesson.firstChild);
-      watched = data[i] && (data[i].watchedStatus == 1);
-    } else if (data[i] && data[i].watchedStatus != 1) {
-      watched = false;
+      watched = !!storedValue;
+    } else if (storedValue != undefined) {
+      watched = storedValue;
     }
-    updateLesson(lesson.firstChild, i, watched);
-    lesson.getElementsByTagName("a")[0].addEventListener(
-        "click", makeLessonClickHandler(i));
-    lesson.firstChild.addEventListener("click", makeCheckMarkClickHandler(i));
+    data[className][sectionName][lessonId] = watched;
+    updateCheckmark(lesson.firstChild, watched);
+    lesson.firstChild.addEventListener("click", makeCheckMarkClickHandler(lessonId));
   }
   updateFolds(data);
+  return data;
 };
+
+
+chrome.storage.sync.get(null, function(data) {
+  var combinedData = updatePage(data);
+  if (lessons.length > 0) {  // avoid storing non-lesson pages
+    chrome.storage.sync.set(combinedData);
+  }
+});
